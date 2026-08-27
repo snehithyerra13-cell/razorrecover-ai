@@ -39,11 +39,15 @@ def seed_database_demo_data(db: Session, n_payments: int = 150):
         db.refresh(merchant)
         print(f"Created merchant: {merchant.name}")
     
-    # Check if we already have payments. If yes, skip seeding to avoid duplicate data.
-    existing_payments = db.query(Payment).filter(Payment.merchant_id == merchant.id).count()
-    if existing_payments > 50:
-        print(f"Database already has {existing_payments} payments. Skipping seeding.")
-        return merchant.id
+    # Wipe existing payments, customers, and logs to ensure a clean database reset!
+    from app.models.models import Notification
+    db.query(AuditLog).delete()
+    db.query(RecoveryAttempt).delete()
+    db.query(RecoveryDecision).delete()
+    db.query(Notification).delete()
+    db.query(Payment).delete()
+    db.query(Customer).delete()
+    db.commit()
 
     # 2. Create Customers
     customers = []
