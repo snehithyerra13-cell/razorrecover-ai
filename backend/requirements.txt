@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+scikit-learn
+joblib
+google-generativeai
+razorpay
+pytest
+httpx
