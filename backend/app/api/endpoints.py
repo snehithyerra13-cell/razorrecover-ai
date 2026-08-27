@@ -277,3 +277,163 @@ async def razorpay_webhook(
     # We will log the incoming webhook
     print("Received Razorpay Webhook Event")
     return {"status": "received"}
+
+def trigger_autonomous_recovery(db: Session, payment: Payment) -> dict:
+    # 1. Fetch/Calculate Customer History Success Rate
+    cust_payments = db.query(Payment).filter(Payment.customer_id == payment.customer_id).all()
+    total_cust_pays = len(cust_payments)
+    success_cust_pays = sum(1 for p in cust_payments if p.status in ["SUCCESS", "RECOVERED"])
+    customer_success_rate = (success_cust_pays / total_cust_pays) if total_cust_pays > 0 else 0.80
+    customer_history_desc = f"Customer has completed {total_cust_pays} payment attempts, with {success_cust_pays} successes."
+
+    # 2. Run ML Model prediction
+    prob = predict_recovery_probability(
+        failure_category=payment.failure_category,
+        payment_method=payment.payment_method,
+        amount=payment.amount,
+        retry_count=payment.retry_count,
+        customer_success_rate=customer_success_rate
+    )
+
+    # 3. Invoke AI Recovery Agent (gemini or fallback rules)
+    ai_analysis = analyze_failed_payment(
+        failure_category=payment.failure_category,
+        payment_method=payment.payment_method,
+        amount=payment.amount,
+        retry_count=payment.retry_count,
+        recovery_probability=prob,
+        customer_history=customer_history_desc
+    )
+
+    ai_decision = ai_analysis.get("decision", "NO_ACTION")
+    ai_strategy = ai_analysis.get("strategy", "NO_ACTION")
+    ai_explanation = ai_analysis.get("explanation", "No action possible.")
+    confidence = ai_analysis.get("confidence", prob)
+    delay_minutes = ai_analysis.get("delay_minutes", 0)
+
+    # 4. Validate through the deterministic Policy Engine
+    is_approved, policy_reason = validate_action(
+        payment_status=payment.status,
+        failure_category=payment.failure_category,
+        amount=payment.amount,
+        retry_count=payment.retry_count,
+        recovery_probability=prob,
+        ai_decision=ai_decision,
+        ai_strategy=ai_strategy
+    )
+
+    policy_result = "APPROVED" if is_approved else "BLOCKED"
+
+    # 5. Save Recovery Decision record
+    decision = RecoveryDecision(
+        payment_id=payment.id,
+        decision=ai_decision,
+        strategy=ai_strategy,
+        confidence=confidence,
+        explanation=ai_explanation,
+        policy_result=policy_result
+    )
+    db.add(decision)
+    db.commit()
+    db.refresh(decision)
+
+    # Audit logging
+    log_audit_event(
+        db,
+        payment_id=payment.id,
+        action="AI_DECISION_CREATED",
+        actor="AI_AGENT",
+        reason=f"AI analyzed payment failure and recommended '{ai_decision}' ({ai_strategy}). Explanation: {ai_explanation}",
+        metadata_dict={"decision": ai_decision, "strategy": ai_strategy, "confidence": confidence, "delay_minutes": delay_minutes}
+    )
+
+    log_audit_event(
+        db,
+        payment_id=payment.id,
+        action="POLICY_CHECKED",
+        actor="POLICY_ENGINE",
+        reason=f"Policy Result: {policy_result}. Policy explanation: {policy_reason}",
+        metadata_dict={"policy_result": policy_result, "reason": policy_reason}
+    )
+
+    # 6. Execute recovery action automatically if APPROVED
+    execution_result = None
+    if policy_result == "APPROVED":
+        execution_result = execute_recovery_action(db, payment.id, decision.id)
+
+    return {
+        "analysis": {
+            "probability": prob,
+            "decision": ai_decision,
+            "policy": policy_result,
+            "explanation": ai_explanation
+        },
+        "execution": execution_result
+    }
+
+@router.post("/demo/simulate_failure")
+def simulate_checkout_failure(db: Session = Depends(get_db)):
+    import random
+    from datetime import datetime
+    from app.db.seed import FAILURE_TYPES
+    
+    # 1. Fetch default Merchant and a random Customer
+    merchant = db.query(Merchant).filter(Merchant.email == "demo@merchant.com").first()
+    if not merchant:
+        raise HTTPException(status_code=400, detail="Demo database not seeded. Please seed database first.")
+        
+    customer = db.query(Customer).filter(Customer.merchant_id == merchant.id).order_by(func.random()).first()
+    if not customer:
+        raise HTTPException(status_code=400, detail="No customers found in database. Seed first.")
+        
+    # 2. Pick a random failed payment type
+    # Focus heavily on transient errors (highly retryable) to show off instant retry recovery
+    fail_choice = random.choices(
+        FAILURE_TYPES,
+        weights=[0.50, 0.20, 0.10, 0.10, 0.05, 0.0, 0.05, 0.0, 0.0, 0.0]
+    )[0]
+    
+    # Create the Payment object in FAILED status
+    payment = Payment(
+        merchant_id=merchant.id,
+        customer_id=customer.id,
+        razorpay_payment_id=f"pay_sim_{random.randint(100000000, 999999999)}",
+        amount=float(random.randint(500, 8000)),
+        currency="INR",
+        payment_method=random.choice(["card", "upi"]),
+        status="FAILED",
+        failure_category=fail_choice[0],
+        failure_code=fail_choice[1],
+        failure_reason=fail_choice[2],
+        retry_count=0,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    
+    # Log initial failure
+    log_audit_event(
+        db,
+        payment_id=payment.id,
+        action="PAYMENT_FAILED",
+        actor="RAZORPAY_SERVICE",
+        reason=f"Checkout failed on payment gateway. Code: {payment.failure_code}.",
+        metadata_dict={"error_code": payment.failure_code, "reason": payment.failure_reason}
+    )
+    
+    # 3. TRIGGER AUTONOMOUS RECOVERY LOOP INSTANTLY!
+    res = trigger_autonomous_recovery(db, payment)
+    
+    # Fetch updated payment status
+    db.refresh(payment)
+    
+    return {
+        "payment_id": payment.id,
+        "amount": payment.amount,
+        "customer": customer.customer_reference,
+        "failure_category": payment.failure_category,
+        "recovery_status": payment.status,
+        "outcome": res
+    }
