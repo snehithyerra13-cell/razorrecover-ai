@@ -104,7 +104,7 @@ class PaymentBase(BaseModel):
     status: str
     failure_code: Optional[str] = None
     failure_reason: Optional[str] = None
-    failure_category: str
+    failure_category: Optional[str] = None
     retry_count: int
 
 class PaymentCreate(BaseModel):
