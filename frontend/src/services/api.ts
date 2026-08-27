@@ -49,4 +49,8 @@ export const api = {
   seedDemoData: (nPayments: number = 150) => request<{ success: boolean; message: string }>(`/demo/seed?n_payments=${nPayments}`, {
     method: 'POST',
   }),
+  
+  simulateFailure: () => request<any>('/demo/simulate_failure', {
+    method: 'POST',
+  }),
 };

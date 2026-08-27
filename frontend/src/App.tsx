@@ -90,6 +90,23 @@ export default function App() {
     }
   };
 
+  // Simulate checkout failure with automatic recovery
+  const handleSimulateCheckoutFailure = async () => {
+    setActionLoading('simulate');
+    try {
+      const res = await api.simulateFailure();
+      showToast(
+        `Captured failed checkout of ₹${res.amount} for ${res.customer}. AI recovered payment automatically! (Status: ${res.recovery_status})`,
+        'success'
+      );
+      await loadDashboardData(false);
+    } catch (err: any) {
+      showToast(err.message || 'Simulation failed', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Run AI analysis
   const handleRunAnalysis = async (paymentId: string) => {
     setActionLoading('analyze');
@@ -334,17 +351,28 @@ export default function App() {
                     To demonstrate the full autonomous loop, select the pre-loaded <strong>Transaction #pay_demo_123</strong> (Temporary Bank Failure) in the payment list below. Click it to trigger the ML probability model, evaluate against the policy guardrails, run the AI agent planning flow, and execute the sandbox recovery action.
                   </p>
                 </div>
-                <button 
-                  onClick={() => {
-                    const pay = payments.find(p => p.id === 'pay_demo_123');
-                    if (pay) viewPaymentDetails(pay);
-                    else showToast("Transaction #pay_demo_123 not loaded. Click 'Reset & Seed Demo Data' first.", 'error');
-                  }}
-                  className="w-full md:w-auto px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white tracking-wide uppercase transition glow-indigo flex items-center justify-center gap-1.5"
-                >
-                  <Play size={14} fill="white" />
-                  Launch Judge Demo
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                  <button 
+                    onClick={() => {
+                      const pay = payments.find(p => p.id === 'pay_demo_123');
+                      if (pay) viewPaymentDetails(pay);
+                      else showToast("Transaction #pay_demo_123 not loaded. Click 'Reset & Seed Demo Data' first.", 'error');
+                    }}
+                    className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white tracking-wide uppercase transition glow-indigo flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Play size={14} fill="white" />
+                    Launch Judge Demo
+                  </button>
+                  
+                  <button 
+                    onClick={handleSimulateCheckoutFailure}
+                    disabled={actionLoading !== null}
+                    className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white tracking-wide uppercase transition glow-emerald flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50"
+                  >
+                    <Activity size={14} className={actionLoading === 'simulate' ? 'animate-spin' : ''} />
+                    Simulate Auto-Recovery checkout
+                  </button>
+                </div>
               </div>
             </div>
 
