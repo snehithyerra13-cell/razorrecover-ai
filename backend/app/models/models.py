@@ -92,6 +92,7 @@ class RecoveryDecision(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     payment_id = Column(String, ForeignKey("payments.id", ondelete="CASCADE"), nullable=False)
     decision = Column(String, nullable=False) # RETRY, NOTIFY_CUSTOMER, STOP, etc.
+    strategy = Column(String, nullable=True)
     confidence = Column(Float, nullable=False)
     explanation = Column(Text, nullable=False)
     policy_result = Column(String, nullable=False) # APPROVED, BLOCKED

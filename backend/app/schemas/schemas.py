@@ -55,6 +55,7 @@ class RecoveryAttemptResponse(RecoveryAttemptBase):
 # --- RecoveryDecision ---
 class RecoveryDecisionBase(BaseModel):
     decision: str
+    strategy: Optional[str] = None
     confidence: float
     explanation: str
     policy_result: str

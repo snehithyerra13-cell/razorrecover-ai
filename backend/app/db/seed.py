@@ -161,6 +161,7 @@ def seed_database_demo_data(db: Session, n_payments: int = 150):
                 dec = RecoveryDecision(
                     payment_id=pay.id,
                     decision="RETRY",
+                    strategy="RETRY_AFTER_DELAY",
                     confidence=0.88,
                     explanation="Temporary bank failure identified. Highly recoverable. Initiating retry.",
                     policy_result="APPROVED",

@@ -196,6 +196,7 @@ def analyze_payment(id: str, db: Session = Depends(get_db)):
     decision = RecoveryDecision(
         payment_id=payment.id,
         decision=ai_decision,
+        strategy=ai_strategy,
         confidence=confidence,
         explanation=ai_explanation,
         policy_result=policy_result
