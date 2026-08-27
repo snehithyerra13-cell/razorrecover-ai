@@ -15,11 +15,10 @@ import {
   Search, 
   ShieldCheck, 
   TrendingUp, 
-  User, 
   XCircle 
 } from 'lucide-react';
 import { api } from './services/api';
-import { Payment, DashboardMetrics, AuditLog } from './types';
+import type { Payment, DashboardMetrics, AuditLog } from './types';
 
 export default function App() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
